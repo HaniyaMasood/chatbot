@@ -1,0 +1,10 @@
+# Theme app extension — merge this folder into a Shopify CLI app under `extensions/`
+# Docs: https://shopify.dev/docs/apps/build/online-store/theme-app-extensions
+
+api_version = "2025-01"
+
+[[extensions]]
+uid = "00000000-0000-4000-8000-000000000001"
+type = "theme"
+name = "fromyheart-chatbot-embed"
+handle = "fromyheart-chatbot-embed"

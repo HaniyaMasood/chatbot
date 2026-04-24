@@ -1,0 +1,44 @@
+{% comment %}
+  From My Heart — hosted chatbot iframe
+  1. Deploy the Next app to Vercel and set NEXT_PUBLIC_CHATBOT_ORIGIN in Theme settings,
+     or replace the default URL below.
+  2. Add this snippet to your theme (e.g. theme.liquid before </body>) or a custom section.
+{% endcomment %}
+
+{% comment %} Set your Vercel deployment origin (no trailing slash). {% endcomment %}
+{% assign chatbot_origin = 'https://YOUR-VERCEL-APP.vercel.app' %}
+
+<div id="fromyheart-chatbot-root" style="position:fixed;right:16px;bottom:16px;z-index:9999;font-family:system-ui,sans-serif;">
+  <button
+    type="button"
+    id="fromyheart-chatbot-toggle"
+    aria-expanded="false"
+    style="border:none;border-radius:9999px;padding:12px 16px;background:#171717;color:#fff;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.2);font-size:14px;font-weight:600;"
+  >
+    Ask us
+  </button>
+  <div id="fromyheart-chatbot-panel" style="display:none;margin-top:8px;width:min(400px,calc(100vw - 32px));height:520px;border-radius:16px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.25);background:#fff;">
+    <iframe
+      title="From My Heart assistant"
+      src="{{ chatbot_origin }}/embed"
+      style="width:100%;height:100%;border:0;"
+      loading="lazy"
+      referrerpolicy="strict-origin-when-cross-origin"
+    ></iframe>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var root = document.getElementById('fromyheart-chatbot-root');
+    if (!root) return;
+    var btn = document.getElementById('fromyheart-chatbot-toggle');
+    var panel = document.getElementById('fromyheart-chatbot-panel');
+    if (!btn || !panel) return;
+    btn.addEventListener('click', function () {
+      var open = panel.style.display !== 'none';
+      panel.style.display = open ? 'none' : 'block';
+      btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+    });
+  })();
+</script>
