@@ -40,4 +40,12 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 The chat UI for iframes is at **`/embed`**. Framing is allowed via `Content-Security-Policy: frame-ancestors` in [`middleware.ts`](middleware.ts).
 
-If the browser shows **“refused to connect”** for a **preview** URL (`*.vercel.app` with a hash), turn off **Vercel Deployment Protection** for this project (or open the deployment in a logged-in tab once), or use your **Production** domain. See [Protecting deployments](https://vercel.com/docs/security/deployment-protection).
+If you see **401** and **`X-Frame-Options: deny`** for a URL like `chatbot-xxxxx-yourteam.vercel.app`, that response is usually **Vercel’s deployment protection page**, not your Next app — middleware cannot change those headers.
+
+**Fix:** Vercel → your project → **Settings** → **Deployment Protection** → for **Preview** deployments choose **Standard Protection** with **“Only my team can access”** disabled for previews you need in iframes, or switch to **“Protection disabled for previews”** while testing. Prefer embedding your **production** hostname (e.g. `https://chatbot.yourdomain.com/embed`) once it works.
+
+The iframe **`src` must end with `/embed`**. If it only points at the deployment root (`/` → `vercel.app/`), middleware redirects that to `/embed` when the browser sends `Sec-Fetch-Dest: iframe` (Safari sometimes omits it; set `IFRAME_ROOT_REDIRECT_MODE=always` only if you must, then use `/?noEmbedRedirect=1` to view the full homepage).
+
+## Version 2 — Multi-store (one Vercel app, many Shopify sites)
+
+See [docs/version-2-multistore.md](docs/version-2-multistore.md). Set **`MULTI_STORE_CONFIG`** (JSON) or keep legacy **`SHOPIFY_*`**. Use **`/embed?store=<storeId>`** in each theme’s iframe `src` so the correct catalog and branding load.

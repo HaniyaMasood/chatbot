@@ -1,6 +1,7 @@
 import { setCachedCatalog } from "@/lib/catalog/cache";
 import { fetchFullCatalogChunks } from "@/lib/catalog/full-sync";
-import { isShopifyConfigured } from "@/lib/shopify/env";
+import { getStoreById } from "@/lib/stores/registry";
+import { isStoreShopifyConfigured } from "@/lib/shopify/graphql-for-store";
 
 function authorize(req: Request): boolean {
   const secret = process.env.CRON_SECRET?.trim();
@@ -11,17 +12,33 @@ function authorize(req: Request): boolean {
   return auth === `Bearer ${secret}`;
 }
 
-async function handleSync() {
-  if (!isShopifyConfigured()) {
+function storeIdFromRequest(req: Request): string | undefined {
+  const u = new URL(req.url);
+  const q = u.searchParams.get("storeId")?.trim();
+  if (q) return q;
+  return undefined;
+}
+
+async function handleSync(req: Request) {
+  const id = storeIdFromRequest(req);
+  const store = getStoreById(id ?? undefined);
+  if (!store) {
     return Response.json(
-      { ok: false, error: "Shopify env not configured" },
+      { ok: false, error: "Unknown storeId. Pass ?storeId=<id> matching MULTI_STORE_CONFIG." },
+      { status: 400 },
+    );
+  }
+  if (!isStoreShopifyConfigured(store)) {
+    return Response.json(
+      { ok: false, error: `Shopify env not configured for store "${store.id}"` },
       { status: 503 },
     );
   }
-  const { chunks, handles, productCount } = await fetchFullCatalogChunks(50, 2500);
-  setCachedCatalog(chunks, handles);
+  const { chunks, handles, productCount } = await fetchFullCatalogChunks(store, 50, 2500);
+  setCachedCatalog(store.id, chunks, handles);
   return Response.json({
     ok: true,
+    storeId: store.id,
     productCount,
     chunks: chunks.length,
     syncedAt: new Date().toISOString(),
@@ -33,7 +50,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    return await handleSync();
+    return await handleSync(req);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return Response.json({ ok: false, error: message }, { status: 500 });
@@ -46,7 +63,7 @@ export async function GET(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    return await handleSync();
+    return await handleSync(req);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return Response.json({ ok: false, error: message }, { status: 500 });

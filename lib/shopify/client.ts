@@ -1,11 +1,16 @@
-import { getMetafieldIdentifiers, getStorefrontAccessToken, getStorefrontEndpoint } from "./env";
+/**
+ * @deprecated Prefer graphql-for-store + registry; kept for any legacy imports.
+ */
+import { getDefaultStore } from "@/lib/stores/registry";
+import { isStoreShopifyConfigured, productByHandleForStore, searchProductsForStore } from "@/lib/shopify/graphql-for-store";
+import { getMetafieldIdentifiers, getStorefrontAccessToken, getStorefrontEndpoint } from "@/lib/shopify/env";
 import {
   PRODUCT_BY_HANDLE_BASE,
   PRODUCT_BY_HANDLE_WITH_METAFIELDS,
   SEARCH_PRODUCTS_BASE,
   SEARCH_PRODUCTS_WITH_METAFIELDS,
-} from "./queries";
-import type { ProductNode } from "./types";
+} from "@/lib/shopify/queries";
+import type { ProductNode } from "@/lib/shopify/types";
 
 type GraphQLResponse<T> = { data?: T; errors?: { message: string }[] };
 
@@ -44,6 +49,9 @@ function metafieldVariables(): Record<string, unknown> | null {
 }
 
 export async function searchProducts(query: string, first = 8): Promise<ProductNode[]> {
+  const store = getDefaultStore();
+  if (store) return searchProductsForStore(store, query, first);
+
   const mf = metafieldVariables();
   if (mf) {
     const data = await storefrontRequest<{
@@ -58,6 +66,9 @@ export async function searchProducts(query: string, first = 8): Promise<ProductN
 }
 
 export async function productByHandle(handle: string): Promise<ProductNode | null> {
+  const store = getDefaultStore();
+  if (store) return productByHandleForStore(store, handle);
+
   const mf = metafieldVariables();
   if (mf) {
     const data = await storefrontRequest<{
@@ -69,4 +80,12 @@ export async function productByHandle(handle: string): Promise<ProductNode | nul
     productByHandle: ProductNode | null;
   }>(PRODUCT_BY_HANDLE_BASE, { handle });
   return data.productByHandle;
+}
+
+export function isShopifyConfigured(): boolean {
+  const store = getDefaultStore();
+  if (store) return isStoreShopifyConfigured(store);
+  return Boolean(
+    process.env.SHOPIFY_STORE_DOMAIN && process.env.SHOPIFY_STOREFRONT_ACCESS_TOKEN,
+  );
 }

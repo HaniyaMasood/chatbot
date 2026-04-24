@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { JEWELRY_SYSTEM_PROMPT } from "@/lib/jewelry-system-prompt";
+import { JEWELRY_SYSTEM_PROMPT } from "@/lib/prompts/store-assistant-prompt";
 
 describe("JEWELRY_SYSTEM_PROMPT", () => {
   it("requires catalog grounding and forbids inventing specs", () => {

@@ -6,8 +6,9 @@ import {
   type UIMessage,
 } from "ai";
 
-import { catalogTools } from "@/lib/chat/catalog-tools";
-import { JEWELRY_SYSTEM_PROMPT } from "@/lib/jewelry-system-prompt";
+import { createCatalogTools } from "@/lib/chat/catalog-tools";
+import { buildAssistantSystemPrompt } from "@/lib/prompts/store-assistant-prompt";
+import { resolveStoreFromApiRequest } from "@/lib/stores/resolve-store";
 
 export const maxDuration = 60;
 
@@ -31,6 +32,11 @@ function getLiteLlmApiKey(): string | undefined {
   );
 }
 
+type ChatBody = {
+  messages?: UIMessage[];
+  storeId?: string;
+};
+
 export async function POST(req: Request) {
   const apiKey = getLiteLlmApiKey();
   if (!apiKey) {
@@ -43,9 +49,9 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: { messages?: UIMessage[] };
+  let body: ChatBody;
   try {
-    body = await req.json();
+    body = (await req.json()) as ChatBody;
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -53,6 +59,17 @@ export async function POST(req: Request) {
   const { messages } = body;
   if (!messages || !Array.isArray(messages)) {
     return Response.json({ error: "Expected { messages: UIMessage[] }" }, { status: 400 });
+  }
+
+  const store = resolveStoreFromApiRequest(req, body.storeId);
+  if (!store) {
+    return Response.json(
+      {
+        error:
+          "No store configuration found. Set SHOPIFY_* for single-store mode or MULTI_STORE_CONFIG for multiple stores. See docs/version-2-multistore.md",
+      },
+      { status: 503 },
+    );
   }
 
   const modelId =
@@ -66,12 +83,20 @@ export async function POST(req: Request) {
     apiKey,
   });
 
+  const catalogTools = createCatalogTools(store);
+  const system = buildAssistantSystemPrompt(store);
+
   const result = streamText({
     model: litellm.chat(modelId),
-    system: JEWELRY_SYSTEM_PROMPT,
+    system,
     messages: await convertToModelMessages(messages, { tools: catalogTools }),
     tools: catalogTools,
     stopWhen: stepCountIs(12),
+    providerOptions: {
+      openai: {
+        parallelToolCalls: false,
+      },
+    },
   });
 
   return result.toUIMessageStreamResponse();

@@ -1,48 +1,66 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+import { collectFrameAncestorSources } from "@/lib/stores/registry";
+import { resolveStoreForEmbedRequest, STORE_COOKIE } from "@/lib/stores/resolve-store";
+
 /**
- * Allow `/embed` to be framed by the Shopify storefront (and optional extra origins).
- * Set CSP in one place to avoid conflicting duplicate Content-Security-Policy headers.
+ * Allow storefronts to frame `/` and `/embed`, set store cookie on `/embed`, and redirect
+ * mistaken iframe loads of `/` → `/embed`.
  *
- * If the iframe still "refuses to connect", check Vercel **Deployment Protection**
- * (preview URLs often require login — disable for this project or use a Production URL).
+ * Preview **401** / **X-Frame-Options: deny** come from Vercel Deployment Protection, not this app.
  */
 function embedFrameAncestorsCsp(): string {
   const override = process.env.CSP_EMBED_HEADER?.trim();
   if (override) return override;
 
-  const extra = process.env.FRAME_ANCESTORS_EXTRA?.trim() || "";
+  const hosts = collectFrameAncestorSources();
+  return `frame-ancestors ${hosts.join(" ")}`;
+}
 
-  const base = [
-    "'self'",
-    "https://www.fromyheart.com",
-    "https://fromyheart.com",
-    "http://www.fromyheart.com",
-    "http://fromyheart.com",
-    "https://*.myshopify.com",
-    "http://*.myshopify.com",
-    "https://myshopify.com",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-  ].join(" ");
-
-  return extra ? `frame-ancestors ${base} ${extra}` : `frame-ancestors ${base}`;
+function shouldRedirectRootToEmbed(request: NextRequest): boolean {
+  if (request.nextUrl.pathname !== "/") return false;
+  if (request.nextUrl.searchParams.has("noEmbedRedirect")) return false;
+  const dest = request.headers.get("sec-fetch-dest");
+  if (dest === "iframe") return true;
+  const mode = process.env.IFRAME_ROOT_REDIRECT_MODE?.trim();
+  if (mode === "always") return true;
+  return false;
 }
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (!pathname.startsWith("/embed")) {
+
+  if (shouldRedirectRootToEmbed(request)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/embed";
+    return NextResponse.redirect(url);
+  }
+
+  const applyFramingHeaders = pathname === "/" || pathname.startsWith("/embed");
+  if (!applyFramingHeaders) {
     return NextResponse.next();
   }
 
   const response = NextResponse.next();
   response.headers.set("Content-Security-Policy", embedFrameAncestorsCsp());
-  // If an upstream sets X-Frame-Options: DENY, embedding breaks; CSP frame-ancestors is preferred.
   response.headers.delete("x-frame-options");
+
+  if (pathname.startsWith("/embed")) {
+    const store = resolveStoreForEmbedRequest(request);
+    if (store) {
+      response.cookies.set(STORE_COOKIE, store.id, {
+        path: "/",
+        maxAge: 60 * 60 * 24 * 30,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
+    }
+  }
+
   return response;
 }
 
 export const config = {
-  matcher: ["/embed", "/embed/:path*"],
+  matcher: ["/", "/embed", "/embed/:path*"],
 };

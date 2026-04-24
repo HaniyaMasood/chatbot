@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "From My Heart — Assistant",
+  title: "Your Store Assistant",
   description: "AI jewellery assistant for fromyheart.com",
 };
 

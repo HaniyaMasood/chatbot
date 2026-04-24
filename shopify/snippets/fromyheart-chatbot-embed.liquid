@@ -5,8 +5,9 @@
   2. Add this snippet to your theme (e.g. theme.liquid before </body>) or a custom section.
 {% endcomment %}
 
-{% comment %} Set your Vercel deployment origin (no trailing slash). {% endcomment %}
+{% comment %} Set your Vercel deployment origin (no trailing slash). For multi-store, append ?store=YOUR_STORE_ID (see docs/version-2-multistore.md). {% endcomment %}
 {% assign chatbot_origin = 'https://YOUR-VERCEL-APP.vercel.app' %}
+{% assign chatbot_store_id = 'fromyheart' %}
 
 <div id="fromyheart-chatbot-root" style="position:fixed;right:16px;bottom:16px;z-index:9999;font-family:system-ui,sans-serif;">
   <button
@@ -19,8 +20,8 @@
   </button>
   <div id="fromyheart-chatbot-panel" style="display:none;margin-top:8px;width:min(400px,calc(100vw - 32px));height:520px;border-radius:16px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.25);background:#fff;">
     <iframe
-      title="From My Heart assistant"
-      src="{{ chatbot_origin }}/embed"
+      title="Your Store Assistant"
+      src="{{ chatbot_origin }}/embed?store={{ chatbot_store_id | strip | url_encode }}"
       style="width:100%;height:100%;border:0;"
       loading="lazy"
       referrerpolicy="strict-origin-when-cross-origin"

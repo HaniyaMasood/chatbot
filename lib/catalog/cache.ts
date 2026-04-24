@@ -4,29 +4,36 @@ type CacheEntry = {
   handles: string[];
 };
 
-let cache: CacheEntry | null = null;
+const caches = new Map<string, CacheEntry>();
 
-export function getCachedCatalog(): CacheEntry | null {
-  return cache;
+export function getCachedCatalog(storeId: string): CacheEntry | null {
+  return caches.get(storeId) ?? null;
 }
 
-export function setCachedCatalog(documents: string[], handles: string[]): void {
-  cache = {
+export function setCachedCatalog(
+  storeId: string,
+  documents: string[],
+  handles: string[],
+): void {
+  caches.set(storeId, {
     syncedAt: Date.now(),
     documents,
     handles,
-  };
+  });
 }
 
-export function clearCachedCatalog(): void {
-  cache = null;
+export function clearCachedCatalog(storeId?: string): void {
+  if (storeId) caches.delete(storeId);
+  else caches.clear();
 }
 
 /** Simple substring filter over synced catalog chunks (optional RAG boost). */
 export function searchCachedCatalogChunks(
+  storeId: string,
   query: string,
   maxChunks = 12,
 ): string[] {
+  const cache = caches.get(storeId);
   if (!cache?.documents.length) return [];
   const q = query.toLowerCase().trim();
   if (!q) return cache.documents.slice(0, maxChunks);
@@ -46,7 +53,12 @@ export function searchCachedCatalogChunks(
     .map((s) => s.doc);
 }
 
-export function catalogStats(): { syncedAt: string | null; chunks: number; handles: number } {
+export function catalogStats(storeId: string): {
+  syncedAt: string | null;
+  chunks: number;
+  handles: number;
+} {
+  const cache = caches.get(storeId);
   if (!cache) {
     return { syncedAt: null, chunks: 0, handles: 0 };
   }

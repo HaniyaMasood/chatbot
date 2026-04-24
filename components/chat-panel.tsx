@@ -2,11 +2,15 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 type ChatPanelProps = {
   /** Compact layout for /embed iframe */
   compact?: boolean;
+  /** Registry store id (sent to /api/chat so one deployment can serve many Shopify catalogs) */
+  storeId?: string;
+  brandName?: string;
+  tagline?: string;
 };
 
 function MessageBody({
@@ -36,9 +40,23 @@ function MessageBody({
   );
 }
 
-export function ChatPanel({ compact }: ChatPanelProps) {
+export function ChatPanel({
+  compact,
+  storeId,
+  brandName = "Store",
+  tagline = "Store assistant — answers use your live catalog when configured.",
+}: ChatPanelProps) {
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/chat",
+        body: storeId ? { storeId } : {},
+      }),
+    [storeId],
+  );
+
   const { messages, sendMessage, status, stop, error, clearError } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
+    transport,
   });
   const [input, setInput] = useState("");
 
@@ -59,19 +77,15 @@ export function ChatPanel({ compact }: ChatPanelProps) {
             : "border-b border-zinc-200 px-4 py-3 dark:border-zinc-800"
         }
       >
-        <h1 className="text-sm font-semibold tracking-tight text-foreground">
-          From My Heart
-        </h1>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          Jewellery assistant — answers use your live catalog when configured.
-        </p>
+        <h1 className="text-sm font-semibold tracking-tight text-foreground">{brandName}</h1>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">{tagline}</p>
       </header>
 
       <div className="flex flex-1 flex-col overflow-hidden">
         <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3 md:px-4">
           {messages.length === 0 && (
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Ask about materials, sizing, a product you saw on the site, or gift ideas.
+              Ask about products you see on the site, materials, sizing, or delivery basics.
             </p>
           )}
           {messages.map((m) => (
@@ -98,8 +112,8 @@ export function ChatPanel({ compact }: ChatPanelProps) {
           <div className="border-t border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
             Something went wrong.{" "}
             <button type="button" className="underline" onClick={() => clearError()}>
-                Dismiss
-              </button>
+              Dismiss
+            </button>
           </div>
         )}
 
@@ -117,7 +131,7 @@ export function ChatPanel({ compact }: ChatPanelProps) {
             <textarea
               className="min-h-[44px] flex-1 resize-none rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900"
               rows={compact ? 2 : 2}
-              placeholder="Ask about a piece…"
+              placeholder="Ask about a product…"
               value={input}
               disabled={busy}
               onChange={(e) => setInput(e.target.value)}
