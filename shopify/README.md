@@ -10,6 +10,8 @@
 
 4. Confirm `/embed` loads on your Vercel URL and that the chat works on the storefront (same-origin API calls from the iframe to Vercel).
 
+If the iframe shows **“refused to connect”** on a **preview** deployment URL, Vercel **Deployment Protection** is often blocking unauthenticated iframes. Disable protection for previews for this project, test in an incognito window, or embed the **production** deployment URL instead. Framing headers are handled in `middleware.ts`; optional env: `FRAME_ANCESTORS_EXTRA`, `CSP_EMBED_HEADER` (see `.env.example`).
+
 ## Catalog snapshot (optional)
 
 `POST` or `GET` `/api/sync` warms an in-memory catalog snapshot used by `searchLocalCatalogSnapshot`. In production, set `CRON_SECRET` and call with header `Authorization: Bearer <CRON_SECRET>`. Schedule with any external cron (e.g. nightly) hitting your Vercel deployment.

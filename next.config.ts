@@ -1,24 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  async headers() {
-    return [
-      {
-        source: "/embed",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: [
-              "frame-ancestors 'self'",
-              "https://www.fromyheart.com",
-              "https://fromyheart.com",
-              "https://*.myshopify.com",
-            ].join(" "),
-          },
-        ],
-      },
-    ];
-  },
+  // Embed framing headers are set in middleware.ts for /embed (single CSP, easier to extend).
 };
 
 export default nextConfig;

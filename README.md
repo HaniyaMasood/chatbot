@@ -35,4 +35,9 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
->>>>>>> df363b2 (Initial commit from Create Next App)
+
+## Embedding in Shopify (iframe)
+
+The chat UI for iframes is at **`/embed`**. Framing is allowed via `Content-Security-Policy: frame-ancestors` in [`middleware.ts`](middleware.ts).
+
+If the browser shows **“refused to connect”** for a **preview** URL (`*.vercel.app` with a hash), turn off **Vercel Deployment Protection** for this project (or open the deployment in a logged-in tab once), or use your **Production** domain. See [Protecting deployments](https://vercel.com/docs/security/deployment-protection).
