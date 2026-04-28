@@ -18,11 +18,25 @@ function MessageBody({
 }: {
   message: { role: string; parts: Array<{ type: string; text?: string; toolName?: string }> };
 }) {
+  const sanitizeAssistantText = (text: string): string => {
+    return text
+      // Strip single-line leaked tool-call payloads, e.g.:
+      // <function=searchShopifyCatalog>{"query":"status:active","limit":15}
+      .replace(/<function=[^\n>]*>[\s\S]*?(?=\n|$)/gi, "")
+      .replace(/<function=[^>]*>[\s\S]*?<\/function>/gi, "")
+      .replace(/<\/?function[^>]*>/gi, "")
+      .replace(/^\s*Let me try another search\.\s*$/gim, "")
+      .trim();
+  };
+
   return (
     <div className="space-y-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed">
       {message.parts.map((part, index) => {
         if (part.type === "text" && part.text) {
-          return <span key={index}>{part.text}</span>;
+          const cleanText =
+            message.role === "assistant" ? sanitizeAssistantText(part.text) : part.text;
+          if (!cleanText) return null;
+          return <span key={index}>{cleanText}</span>;
         }
         if (part.type.startsWith("tool-")) {
           return (

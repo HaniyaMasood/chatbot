@@ -1,29 +1,118 @@
 import { tool } from "ai";
 import { z } from "zod";
 
-import { searchCachedCatalogChunks } from "@/lib/catalog/cache";
-import {
-  isStoreShopifyConfigured,
-  productByHandleForStore,
-  searchProductsForStore,
-} from "@/lib/shopify/graphql-for-store";
+import { isStoreShopifyConfigured } from "@/lib/shopify/graphql-for-store";
 import { resolveHandleFromProductUrl } from "@/lib/shopify/parse-product-url";
-import { productToCatalogText, productsToContextBlock } from "@/lib/shopify/normalize";
 import type { ResolvedStore } from "@/lib/stores/types";
 
+type CatalogMoney = { amount?: number; currency?: string };
+type CatalogVariant = {
+  title?: string;
+  price?: CatalogMoney;
+  availability?: { available?: boolean };
+  options?: Array<{ name?: string; label?: string }>;
+};
+type CatalogProduct = {
+  id?: string;
+  title?: string;
+  url?: string;
+  description?: { html?: string };
+  price_range?: { min?: CatalogMoney; max?: CatalogMoney };
+  variants?: CatalogVariant[];
+};
+
+function shopifyMcpEndpoint(store: ResolvedStore): string {
+  const shop = store.shopifyStoreDomain.replace(/\.myshopify\.com$/i, "").trim();
+  return `https://${shop}.myshopify.com/api/ucp/mcp`;
+}
+
+async function callShopifyMcpTool(
+  store: ResolvedStore,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(shopifyMcpEndpoint(store), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Storefront-Access-Token": store.shopifyStorefrontAccessToken,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: `chat-${Date.now()}`,
+      method: "tools/call",
+      params: {
+        name,
+        arguments: {
+          ...args,
+          meta: {
+            "ucp-agent": {
+              profile:
+                process.env.SHOPIFY_UCP_AGENT_PROFILE?.trim() ||
+                "https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json",
+            },
+          },
+        },
+      },
+    }),
+    cache: "no-store",
+  });
+
+  const body = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(`Shopify MCP HTTP ${res.status}: ${JSON.stringify(body)}`);
+  }
+  if (body.error) {
+    throw new Error(`Shopify MCP error: ${JSON.stringify(body.error)}`);
+  }
+  return body;
+}
+
+function parseProductsFromSearchResponse(payload: Record<string, unknown>): CatalogProduct[] {
+  const products = payload.products;
+  if (!Array.isArray(products)) return [];
+  return products.filter((p): p is CatalogProduct => typeof p === "object" && p !== null);
+}
+
+function summarizeProduct(p: CatalogProduct): string {
+  const min = p.price_range?.min;
+  const max = p.price_range?.max;
+  const price =
+    min && max
+      ? `${min.currency ?? ""} ${Number(min.amount ?? 0) / 100} - ${Number(max.amount ?? 0) / 100}`.trim()
+      : "price not available";
+  const variants =
+    p.variants
+      ?.slice(0, 6)
+      .map((v) => {
+        const vPrice =
+          v.price?.amount != null
+            ? `${v.price.currency ?? ""} ${Number(v.price.amount) / 100}`.trim()
+            : "n/a";
+        const inStock = v.availability?.available ? "in stock" : "availability unknown";
+        return `- ${v.title ?? "Variant"} (${vPrice}; ${inStock})`;
+      })
+      .join("\n") ?? "";
+  return [
+    `Title: ${p.title ?? "Unknown"}`,
+    p.url ? `URL: ${p.url}` : undefined,
+    `Price: ${price}`,
+    variants ? `Variants:\n${variants}` : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function createCatalogTools(store: ResolvedStore | null) {
-  const sid = store?.id ?? "default";
   const brand = store?.brandName ?? "this store";
 
   return {
     searchShopifyCatalog: tool({
-      description: `Search the ${brand} Shopify catalog. Use a concrete search string (e.g. ring, gold, controller). For a broad first page of active products use query "status:active". Max 15 products per call.`,
+      description: `Search the ${brand} Shopify catalog via Storefront MCP. Use a concrete search string (e.g. ring, gold, controller). Max 15 products per call.`,
       inputSchema: z.object({
         query: z
           .string()
-          .describe(
-            "Storefront search string (non-empty). Examples: gold necklace, status:active, gift",
-          ),
+          .describe("Search string (non-empty). Examples: gold necklace, controller, gift"),
         limit: z.coerce
           .number()
           .min(1)
@@ -35,21 +124,31 @@ export function createCatalogTools(store: ResolvedStore | null) {
         if (!store || !isStoreShopifyConfigured(store)) {
           return {
             ok: false as const,
-            error: "Shopify Storefront API is not configured for this store.",
+            error: "Shopify Storefront MCP is not configured for this store.",
           };
         }
         try {
-          const q = query.trim() || "status:active";
+          const q = query.trim() || "products";
           const lim = Math.min(Math.max(Number(limit) || 8, 1), 15);
-          const products = await searchProductsForStore(store, q, lim);
+          const rpc = await callShopifyMcpTool(store, "search_catalog", {
+            catalog: {
+              query: q,
+              pagination: { limit: lim },
+            },
+          });
+          const products = parseProductsFromSearchResponse(rpc);
           return {
             ok: true as const,
-            context: productsToContextBlock(products),
-            handles: products.map((p) => p.handle),
+            context: products.length
+              ? products
+                  .map((p, i) => `--- Product ${i + 1} ---\n${summarizeProduct(p)}`)
+                  .join("\n\n")
+              : "No products found.",
+            productIds: products.map((p) => p.id).filter(Boolean),
           };
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
-          return { ok: false as const, error: `Shopify search failed: ${message}` };
+          return { ok: false as const, error: `Shopify MCP search failed: ${message}` };
         }
       },
     }),
@@ -74,7 +173,7 @@ export function createCatalogTools(store: ResolvedStore | null) {
         if (!store || !isStoreShopifyConfigured(store)) {
           return {
             ok: false as const,
-            error: "Shopify Storefront API is not configured for this store.",
+            error: "Shopify Storefront MCP is not configured for this store.",
           };
         }
 
@@ -91,40 +190,27 @@ export function createCatalogTools(store: ResolvedStore | null) {
         }
 
         try {
-          const product = await productByHandleForStore(store, resolvedHandle);
-          if (!product) {
+          const searchRpc = await callShopifyMcpTool(store, "search_catalog", {
+            catalog: { query: resolvedHandle, pagination: { limit: 15 } },
+          });
+          const candidates = parseProductsFromSearchResponse(searchRpc);
+          const best = candidates.find((p) => p.url?.includes(`/products/${resolvedHandle}`));
+          if (!best?.id) {
             return {
               ok: false as const,
-              error: `No product found for handle "${resolvedHandle}". The handle may differ on Shopify, or the product may be unpublished to the Storefront API.`,
+              error: `No product found for handle "${resolvedHandle}".`,
             };
           }
-          return { ok: true as const, context: productToCatalogText(product) };
+
+          const detailRpc = await callShopifyMcpTool(store, "get_product_details", {
+            product_id: best.id,
+          });
+          const detail = (detailRpc.product ?? best) as CatalogProduct;
+          return { ok: true as const, context: summarizeProduct(detail) };
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
-          return { ok: false as const, error: `Shopify lookup failed: ${message}` };
+          return { ok: false as const, error: `Shopify MCP lookup failed: ${message}` };
         }
-      },
-    }),
-
-    searchLocalCatalogSnapshot: tool({
-      description:
-        "Search the last server-side catalog snapshot synced via /api/sync for this store (substring match). Use with live Shopify search when the snapshot may contain richer merged text.",
-      inputSchema: z.object({
-        query: z.string().describe("Search phrase to match against synced catalog chunks"),
-      }),
-      execute: async ({ query }) => {
-        const hits = searchCachedCatalogChunks(sid, query, 10);
-        if (!hits.length) {
-          return {
-            ok: true as const,
-            context:
-              "No matching chunks in the local catalog snapshot for this store. Run POST /api/sync?storeId=... or rely on searchShopifyCatalog.",
-          };
-        }
-        return {
-          ok: true as const,
-          context: hits.map((h, i) => `--- Snapshot ${i + 1} ---\n${h}`).join("\n\n"),
-        };
       },
     }),
   };
